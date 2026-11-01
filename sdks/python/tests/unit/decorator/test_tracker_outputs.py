@@ -2930,3 +2930,102 @@ def test_track__slots_dataclass_input_and_output__encoded_as_dicts(fake_backend)
     assert len(fake_backend.trace_trees) == 1
 
     assert_equal(EXPECTED_TRACE_TREE, fake_backend.trace_trees[0])
+
+
+def _pass_through_decorator(func):
+    @functools.wraps(func)
+    def wrapper(*args, **kwargs):
+        return func(*args, **kwargs)
+
+    return wrapper
+
+
+def test_track__generator_function_wrapped_by_sync_decorator__output_is_aggregated(
+    fake_backend,
+):
+    @tracker.track
+    @_pass_through_decorator
+    def f(x):
+        values = ["yielded-1", " yielded-2", " yielded-3"]
+        for value in values:
+            yield value
+
+    generator = f("generator-input")
+    for _ in generator:
+        pass
+
+    tracker.flush_tracker()
+
+    EXPECTED_TRACE_TREE = TraceModel(
+        id=ANY_BUT_NONE,
+        name="f",
+        input={"x": "generator-input"},
+        output={"output": "yielded-1 yielded-2 yielded-3"},
+        start_time=ANY_BUT_NONE,
+        end_time=ANY_BUT_NONE,
+        last_updated_at=ANY_BUT_NONE,
+        spans=[
+            SpanModel(
+                id=ANY_BUT_NONE,
+                name="f",
+                input={"x": "generator-input"},
+                output={"output": "yielded-1 yielded-2 yielded-3"},
+                start_time=ANY_BUT_NONE,
+                end_time=ANY_BUT_NONE,
+                spans=[],
+                source="sdk",
+            )
+        ],
+        source="sdk",
+    )
+
+    assert len(fake_backend.trace_trees) == 1
+
+    assert_equal(EXPECTED_TRACE_TREE, fake_backend.trace_trees[0])
+
+
+def test_track__async_generator_function_wrapped_by_sync_decorator__output_is_aggregated(
+    fake_backend,
+):
+    @tracker.track
+    @_pass_through_decorator
+    async def f(x):
+        await asyncio.sleep(0.01)
+
+        for item in ["yielded-1", " yielded-2", " yielded-3"]:
+            yield item
+
+    async def user():
+        async for _ in f("generator-input"):
+            pass
+
+    asyncio.run(user())
+
+    tracker.flush_tracker()
+
+    EXPECTED_TRACE_TREE = TraceModel(
+        id=ANY_BUT_NONE,
+        name="f",
+        input={"x": "generator-input"},
+        output={"output": "yielded-1 yielded-2 yielded-3"},
+        start_time=ANY_BUT_NONE,
+        end_time=ANY_BUT_NONE,
+        last_updated_at=ANY_BUT_NONE,
+        spans=[
+            SpanModel(
+                id=ANY_BUT_NONE,
+                name="f",
+                input={"x": "generator-input"},
+                output={"output": "yielded-1 yielded-2 yielded-3"},
+                start_time=ANY_BUT_NONE,
+                end_time=ANY_BUT_NONE,
+                spans=[],
+                source="sdk",
+            )
+        ],
+        source="sdk",
+    )
+
+    assert len(fake_backend.trace_trees) == 1
+
+    assert_equal(EXPECTED_TRACE_TREE, fake_backend.trace_trees[0])

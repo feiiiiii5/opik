@@ -50,29 +50,34 @@ def is_generator(obj: Any) -> bool:
     return inspect.isgenerator(obj)
 
 
-def is_generator_function(obj: Any) -> bool:
-    return inspect.isgeneratorfunction(obj)
-
-
-def is_async(func: Callable) -> bool:
-    # Walk the full __wrapped__ chain so that async functions decorated with
-    # one or more synchronous wrappers (e.g. functools.wraps-based decorators)
-    # are still detected correctly. inspect.iscoroutinefunction never follows
-    # __wrapped__ (it only unwraps functools.partial), and the
-    # inspect.markcoroutinefunction opt-in added in Python 3.12
-    # (https://github.com/python/cpython/issues/94912) requires the wrapper
-    # author to mark it, so this traversal is still needed on every version.
+def _wrapped_chain_contains(obj: Any, predicate: Callable[[Any], bool]) -> bool:
+    # Walk the full __wrapped__ chain: the inspect predicates never follow it
+    # (beyond functools.partial), so a function decorated with one or more
+    # functools.wraps-based decorators is not recognized as a coroutine,
+    # generator, or async generator function on its own.
     seen = set()
-    current: Any = func
+    current: Any = obj
     while current is not None:
         if id(current) in seen:
             break
         seen.add(id(current))
-        if inspect.iscoroutinefunction(current):
+        if predicate(current):
             return True
         current = getattr(current, "__wrapped__", None)
 
     return False
+
+
+def is_generator_function(obj: Any) -> bool:
+    return _wrapped_chain_contains(obj, inspect.isgeneratorfunction)
+
+
+def is_async_generator_function(obj: Any) -> bool:
+    return _wrapped_chain_contains(obj, inspect.isasyncgenfunction)
+
+
+def is_async(func: Callable) -> bool:
+    return _wrapped_chain_contains(func, inspect.iscoroutinefunction)
 
 
 def get_function_name(func: Callable) -> str:
