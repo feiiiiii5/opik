@@ -85,6 +85,54 @@ def test_jsonable_encoder__repeated_objects_in_list():
     assert all("Cyclic reference" not in str(item) for item in encoded)
 
 
+def _cyclic_dict():
+    data = {}
+    data["self"] = data
+    return data
+
+
+def _cyclic_list():
+    data = []
+    data.append(data)
+    return data
+
+
+def _tuple_list_cycle():
+    holder = []
+    cyclic_tuple = (holder,)
+    holder.append(cyclic_tuple)
+    return cyclic_tuple
+
+
+def _self_referential_ndarray():
+    data = np.empty(1, dtype=object)
+    data[0] = data
+    return data
+
+
+_NATIVE_CYCLE_CASES = [
+    (_cyclic_dict, "dict", ("self",)),
+    (_cyclic_list, "list", (0,)),
+    (_tuple_list_cycle, "tuple", (0, 0)),
+]
+if jsonable_encoder.np is not None:
+    _NATIVE_CYCLE_CASES.append((_self_referential_ndarray, "ndarray", (0,)))
+
+
+@pytest.mark.parametrize("factory,type_name,path", _NATIVE_CYCLE_CASES)
+def test_jsonable_encoder__native_container_cycle__marker_at_repeat_point(
+    factory, type_name, path
+):
+    encoded = jsonable_encoder.encode(factory())
+
+    for key in path[:-1]:
+        encoded = encoded[key]
+    marker = encoded[path[-1]]
+
+    assert isinstance(marker, str)
+    assert marker.startswith(f"<Cyclic reference to {type_name} id=")
+
+
 @pytest.mark.parametrize(
     "obj",
     [
